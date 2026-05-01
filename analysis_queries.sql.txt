@@ -1,0 +1,54 @@
+-- 1. 各部门全年预算vs实际汇总
+SELECT 
+  c1 AS Department,
+  ROUND(SUM(CAST(c3 AS REAL)), 0) AS Total_Budget,
+  ROUND(SUM(CAST(c4 AS REAL)), 0) AS Total_Actual,
+  ROUND(SUM(CAST(c5 AS REAL)), 0) AS Total_Variance,
+  ROUND(AVG(CAST(c6 AS REAL)) * 100, 1) AS Avg_Variance_Pct
+FROM fpa_variance_data_monthly
+WHERE c1 != 'Department'
+GROUP BY c1
+ORDER BY Total_Variance ASC;
+
+-- 2. 用窗口函数找每个部门差异最大的月份
+SELECT 
+  c1 AS Department,
+  c2 AS Month,
+  CAST(c3 AS REAL) AS Budget,
+  CAST(c4 AS REAL) AS Actual,
+  CAST(c5 AS REAL) AS Variance,
+  ROUND(CAST(c6 AS REAL) * 100, 1) AS Variance_Pct,
+  RANK() OVER (PARTITION BY c1 ORDER BY ABS(CAST(c5 AS REAL)) DESC) AS Variance_Rank
+FROM fpa_variance_data_monthly
+WHERE c1 != 'Department';
+
+-- 3. CTE找每个部门差异最大的单月
+WITH ranked AS (
+  SELECT 
+    c1 AS Department,
+    c2 AS Month,
+    CAST(c3 AS REAL) AS Budget,
+    CAST(c4 AS REAL) AS Actual,
+    CAST(c5 AS REAL) AS Variance,
+    ROUND(CAST(c6 AS REAL) * 100, 1) AS Variance_Pct,
+    RANK() OVER (PARTITION BY c1 ORDER BY ABS(CAST(c5 AS REAL)) DESC) AS Variance_Rank
+  FROM fpa_variance_data_monthly
+  WHERE c1 != 'Department'
+)
+SELECT Department, Month, Budget, Actual, Variance, Variance_Pct
+FROM ranked
+WHERE Variance_Rank = 1
+ORDER BY ABS(Variance) DESC;
+
+-- 4. 整体KPI
+SELECT
+  COUNT(DISTINCT c1) AS Total_Departments,
+  COUNT(*) AS Total_Months,
+  ROUND(SUM(CAST(c3 AS REAL)), 0) AS Total_Budget,
+  ROUND(SUM(CAST(c4 AS REAL)), 0) AS Total_Actual,
+  ROUND(SUM(CAST(c5 AS REAL)), 0) AS Total_Variance,
+  ROUND(AVG(CAST(c6 AS REAL)) * 100, 1) AS Avg_Variance_Pct,
+  SUM(CASE WHEN CAST(c5 AS REAL) > 0 THEN 1 ELSE 0 END) AS Months_Over_Budget,
+  SUM(CASE WHEN CAST(c5 AS REAL) < 0 THEN 1 ELSE 0 END) AS Months_Under_Budget
+FROM fpa_variance_data_monthly
+WHERE c1 != 'Department';
